@@ -1,0 +1,29 @@
+# NewsHub RSS Aggregator - Python Dependencies
+# Professional RSS News Aggregator Web Application
+
+# Core Framework
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# RSS Feed Processing
+feedparser==6.0.10
+
+# HTTP Requests
+requests==2.31.0
+
+# Date and Time Processing
+python-dateutil==2.8.2
+
+# HTML Parsing (for cleaning descriptions)
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Development and Testing
+pytest==7.4.2
+pytest-flask==1.2.0
+
+# Production Server (optional)
+gunicorn==21.2.0
+
+# Environment Variables (optional)
+python-dotenv==1.0.0

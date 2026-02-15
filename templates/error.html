@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Error - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <div class="error-page py-5">
+                <i class="bi bi-exclamation-triangle display-1 text-warning mb-4"></i>
+                <h1 class="display-4 fw-bold mb-3">Oops! Something went wrong</h1>
+                
+                {% if error %}
+                <div class="alert alert-danger">
+                    <p class="mb-0">{{ error }}</p>
+                </div>
+                {% endif %}
+                
+                <p class="lead text-muted mb-4">
+                    We're having trouble loading the news feeds. Please try again in a moment.
+                </p>
+                
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-primary" onclick="history.back()">
+                        <i class="bi bi-arrow-left me-2"></i>Go Back
+                    </button>
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-house me-2"></i>Home
+                    </a>
+                    <button class="btn btn-success" onclick="location.reload()">
+                        <i class="bi bi-arrow-clockwise me-2"></i>Retry
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

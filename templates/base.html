@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Real-time news aggregator from top sources like Reuters, BBC, and CNN">
+    <meta name="keywords" content="news, rss, aggregator, reuters, bbc, cnn, breaking news">
+    
+    <title>{% block title %}{{ app_name }} - Professional News Aggregator{% endblock %}</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
+                <i class="bi bi-newspaper me-2"></i>{{ app_name }}
+            </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">
+                            <i class="bi bi-house me-1"></i>Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="refreshFeeds(); return false;">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                        </a>
+                    </li>
+                </ul>
+                
+                <div class="d-flex align-items-center">
+                    <span class="text-white me-3">
+                        <i class="bi bi-clock me-1"></i>
+                        <span id="last-updated">Loading...</span>
+                    </span>
+                    <button class="btn btn-outline-light btn-sm" onclick="toggleAutoRefresh()">
+                        <i class="bi bi-play-circle me-1"></i>
+                        <span id="auto-refresh-text">Auto Refresh</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breaking News Banner -->
+    {% if trending_articles and trending_articles|length > 0 %}
+    <div class="breaking-news-banner bg-danger text-white py-2">
+        <div class="container">
+            <div class="d-flex align-items-center">
+                <span class="breaking-news-label bg-white text-danger px-3 py-1 rounded me-3 fw-bold">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>BREAKING
+                </span>
+                <div class="breaking-news-ticker flex-grow-1 overflow-hidden">
+                    <div class="breaking-news-text">
+                        {% for article in trending_articles[:3] %}
+                            <span class="me-4">
+                                <strong>{{ article.source }}:</strong> 
+                                <a href="{{ article.link }}" target="_blank" class="text-white text-decoration-none">
+                                    {{ article.title }}
+                                </a>
+                            </span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Main Content -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>{{ app_name }}</h5>
+                    <p class="text-muted">Professional RSS News Aggregator</p>
+                    <p class="small text-muted">
+                        Real-time news from Reuters, BBC, CNN, and more.
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <h6>Quick Links</h6>
+                    <ul class="list-unstyled">
+                        <li><a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none">Home</a></li>
+                        <li><a href="#" onclick="showStats(); return false;" class="text-white-50 text-decoration-none">Statistics</a></li>
+                        <li><a href="#" onclick="showAbout(); return false;" class="text-white-50 text-decoration-none">About</a></li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="my-3 bg-secondary">
+            <div class="text-center">
+                <p class="small text-muted mb-0">
+                    &copy; {{ current_year }} {{ app_name }}. Built with Flask & Bootstrap.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center py-4">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mb-0">Fetching latest news...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div class="modal fade" id="statsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-bar-chart me-2"></i>News Statistics
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="stats-content">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
