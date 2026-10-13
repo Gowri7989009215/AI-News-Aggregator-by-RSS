@@ -1,281 +1,297 @@
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} - Latest News from Reuters, BBC, CNN{% endblock %}
+{% block title %}{{ app_name }} - Real-Time News Intelligence & RSS Aggregator{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-    <!-- Header Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="text-center">
-                <h1 class="display-4 fw-bold text-primary mb-3">
-                    <i class="bi bi-newspaper me-3"></i>Professional News Aggregator
-                </h1>
-                <p class="lead text-muted">
-                    Real-time news from trusted sources worldwide
-                </p>
-            </div>
-        </div>
-    </div>
+<div class="container-xl py-4">
 
-    <!-- Category Filter Buttons -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="category-filters">
-                <div class="d-flex flex-wrap justify-content-center gap-2">
-                    <button class="btn {% if not selected_category %}btn-primary{% else %}btn-outline-primary{% endif %}" 
-                            onclick="filterByCategory('all')">
-                        <i class="bi bi-grid me-1"></i>All News
-                        <span class="badge bg-secondary ms-1">{{ all_articles|length }}</span>
-                    </button>
-                    
-                    {% for category in categories %}
-                    <button class="btn {% if selected_category == category %}btn-primary{% else %}btn-outline-primary{% endif %}" 
-                            onclick="filterByCategory('{{ category }}')">
-                        {% if category == 'Breaking News' %}
-                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                        {% elif category == 'World' %}
-                            <i class="bi bi-globe me-1"></i>
-                        {% elif category == 'Business' %}
-                            <i class="bi bi-briefcase me-1"></i>
-                        {% elif category == 'Technology' %}
-                            <i class="bi bi-cpu me-1"></i>
-                        {% elif category == 'Domestic' %}
-                            <i class="bi bi-house-door me-1"></i>
+    <!-- Hero / Featured Section (Shown when no specific filter is active or on general view) -->
+    {% if hero_article and not selected_category and not selected_source %}
+    <section class="hero-section mb-4" id="hero-showcase">
+        <div class="row g-4 align-items-stretch">
+            <!-- Lead Story Card (Col 8) -->
+            <div class="col-lg-8">
+                <article class="hero-card" id="lead-story-card">
+                    <div class="hero-img-wrapper">
+                        {% if hero_article.image %}
+                        <img src="{{ hero_article.image }}" alt="{{ hero_article.title }}" class="hero-img" loading="eager" onerror="this.parentElement.innerHTML='<div class=\'card-thumb-fallback\'><i class=\'bi bi-newspaper fallback-source-icon\'></i><span class=\'fallback-source-name\'>{{ hero_article.source }}</span></div>';">
                         {% else %}
-                            <i class="bi bi-tag me-1"></i>
-                        {% endif %}
-                        {{ category }}
-                        <span class="badge bg-secondary ms-1">{{ categorized_articles[category]|length }}</span>
-                    </button>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Source Filter Pills -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="source-filters">
-                <div class="d-flex flex-wrap justify-content-center gap-2">
-                    <span class="text-muted me-2">Filter by source:</span>
-                    {% if articles_by_source %}
-                    {% for source, articles in articles_by_source.items() %}
-                    <span class="badge {% if selected_source == source %}bg-primary{% else %}bg-secondary{% endif %} p-2">
-                        <a href="{{ url_for('filter_by_source', source_name=source) }}" 
-                           class="text-white text-decoration-none">
-                            {{ source }} ({{ articles|length }})
-                        </a>
-                    </span>
-                    {% endfor %}
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Content Grid -->
-    <div class="row">
-        <!-- Left Sidebar - Trending -->
-        <div class="col-lg-3 mb-4">
-            <div class="sticky-top" style="top: 100px;">
-                <div class="card">
-                    <div class="card-header bg-warning text-dark">
-                        <h6 class="mb-0">
-                            <i class="bi bi-fire me-2"></i>Trending Now
-                        </h6>
-                    </div>
-                    <div class="card-body p-0">
-                        {% if trending_articles %}
-                        <div class="list-group list-group-flush">
-                            {% for article in trending_articles[:5] %}
-                            <div class="list-group-item list-group-item-action border-0">
-                                <div class="d-flex">
-                                    <span class="badge bg-primary rounded-pill me-2 mt-1">{{ loop.index }}</span>
-                                    <div class="flex-grow-1">
-                                        <h7 class="fw-bold mb-1">
-                                            <a href="{{ article.link }}" target="_blank" class="text-decoration-none">
-                                                {{ article.title[:60] }}{% if article.title|length > 60 %}...{% endif %}
-                                            </a>
-                                        </h7>
-                                        <div class="text-muted small">
-                                            <i class="bi bi-building me-1"></i>{{ article.source }}
-                                            <span class="ms-2">
-                                                <i class="bi bi-clock me-1"></i>
-                                                {{ article.published[:20] if article.published else 'Unknown' }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                        {% else %}
-                        <div class="text-center py-3 text-muted">
-                            <i class="bi bi-hourglass-split"></i>
-                            <p class="mb-0 small">No trending articles available</p>
+                        <div class="card-thumb-fallback">
+                            <i class="bi bi-newspaper fallback-source-icon"></i>
+                            <span class="fallback-source-name">{{ hero_article.source }}</span>
                         </div>
                         {% endif %}
+                        <div class="hero-img-overlay"></div>
+                        <span class="card-source-chip" style="background-color: {{ hero_article.source_color }};">
+                            {{ hero_article.source }}
+                        </span>
+                        <span class="card-category-chip">
+                            <i class="bi bi-tag-fill me-1"></i>{{ hero_article.assigned_category or hero_article.category }}
+                        </span>
                     </div>
-                </div>
-
-                <!-- Cache Info -->
-                <div class="card mt-3">
-                    <div class="card-header bg-info text-white">
-                        <h6 class="mb-0">
-                            <i class="bi bi-info-circle me-2"></i>Cache Info
-                        </h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="small">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Cached Sources:</span>
-                                <span class="fw-bold">{{ cache_info.cache_size }}</span>
-                            </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span>Cache Duration:</span>
-                                <span class="fw-bold">{{ cache_info.cache_duration_minutes|int }} min</span>
-                            </div>
-                            <div class="d-flex justify-content-between">
-                                <span>Total Articles:</span>
-                                <span class="fw-bold">{{ all_articles|length }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Main Content Area -->
-        <div class="col-lg-9">
-            {% if selected_category %}
-            <div class="alert alert-info d-flex align-items-center" role="alert">
-                <i class="bi bi-funnel me-2"></i>
-                <div>
-                    <strong>Filtered by:</strong> {{ selected_category }}
-                    <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-primary ms-3">
-                        <i class="bi bi-x-circle me-1"></i>Clear Filter
-                    </a>
-                </div>
-            </div>
-            {% endif %}
-
-            {% if selected_source %}
-            <div class="alert alert-success d-flex align-items-center" role="alert">
-                <i class="bi bi-building me-2"></i>
-                <div>
-                    <strong>Source:</strong> {{ selected_source }}
-                    <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-success ms-3">
-                        <i class="bi bi-x-circle me-1"></i>Clear Filter
-                    </a>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- News Articles Grid -->
-            {% if categorized_articles %}
-                {% for category, articles in categorized_articles.items() %}
-                {% if articles|length > 0 %}
-                <section class="mb-5">
-                    <div class="category-header mb-3">
-                        <h3 class="fw-bold">
-                            {% if category == 'Breaking News' %}
-                                <span class="badge bg-danger me-2">
-                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ category }}
-                                </span>
-                            {% elif category == 'World' %}
-                                <span class="badge bg-primary me-2">
-                                    <i class="bi bi-globe me-1"></i>{{ category }}
-                                </span>
-                            {% elif category == 'Business' %}
-                                <span class="badge bg-success me-2">
-                                    <i class="bi bi-briefcase me-1"></i>{{ category }}
-                                </span>
-                            {% elif category == 'Technology' %}
-                                <span class="badge bg-info me-2">
-                                    <i class="bi bi-cpu me-1"></i>{{ category }}
-                                </span>
-                            {% elif category == 'Domestic' %}
-                                <span class="badge bg-secondary me-2">
-                                    <i class="bi bi-house-door me-1"></i>{{ category }}
-                                </span>
-                            {% else %}
-                                <span class="badge bg-secondary me-2">
-                                    <i class="bi bi-tag me-1"></i>{{ category }}
-                                </span>
+                    <div class="hero-body">
+                        <div class="d-flex align-items-center gap-3 text-muted small mb-2">
+                            <span><i class="bi bi-clock me-1"></i>{{ hero_article.published_relative }}</span>
+                            <span>&bull;</span>
+                            <span><i class="bi bi-stopwatch me-1"></i>{{ hero_article.reading_time }} min read</span>
+                            {% if hero_article.author %}
+                            <span class="d-none d-sm-inline">&bull;</span>
+                            <span class="d-none d-sm-inline"><i class="bi bi-person me-1"></i>{{ hero_article.author }}</span>
                             {% endif %}
-                            <small class="text-muted">({{ articles|length }} articles)</small>
-                        </h3>
+                        </div>
+                        <h2 class="hero-title">
+                            <a href="{{ hero_article.link }}" target="_blank" rel="noopener noreferrer">
+                                {{ hero_article.title }}
+                            </a>
+                        </h2>
+                        <p class="hero-excerpt">
+                            {{ hero_article.description or hero_article.summary or 'Click to read full coverage on ' + hero_article.source }}
+                        </p>
+                        <div class="d-flex align-items-center justify-content-between pt-2 border-top" style="border-color: var(--border-color) !important;">
+                            <div class="d-flex gap-2">
+                                <a href="{{ hero_article.link }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm px-3">
+                                    Read Full Story <i class="bi bi-box-arrow-up-right ms-1"></i>
+                                </a>
+                                <button class="btn btn-outline-secondary btn-sm" onclick="openPreviewModal('{{ hero_article.link|replace("'", "\\'") }}', '{{ hero_article.title|replace("'", "\\'") }}', '{{ hero_article.source|replace("'", "\\'") }}', '{{ hero_article.published_relative }}')">
+                                    <i class="bi bi-eye me-1"></i>Quick Preview
+                                </button>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn-icon-action" onclick="toggleBookmark('{{ hero_article.link|replace("'", "\\'") }}', '{{ hero_article.title|replace("'", "\\'") }}', '{{ hero_article.source|replace("'", "\\'") }}', '{{ hero_article.image|replace("'", "\\'") if hero_article.image else '' }}')" title="Save story">
+                                    <i class="bi bi-bookmark" id="hero-bookmark-icon"></i>
+                                </button>
+                                <button class="btn-icon-action" onclick="shareArticle('{{ hero_article.link|replace("'", "\\'") }}', '{{ hero_article.title|replace("'", "\\'") }}')" title="Share story">
+                                    <i class="bi bi-share"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
+                </article>
+            </div>
 
-                    <div class="row g-4">
-                        {% for article in articles %}
-                        <div class="col-md-6 col-lg-4">
-                            <div class="card h-100 news-card">
-                                <div class="card-header d-flex justify-content-between align-items-center py-2">
-                                    <span class="source-badge badge bg-light text-dark">
-                                        <i class="bi bi-building me-1"></i>{{ article.source }}
+            <!-- Trending Pulse (Col 4) -->
+            <div class="col-lg-4">
+                <div class="trending-pulse-card h-100 d-flex flex-direction-column">
+                    <div class="trending-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-fire text-danger fs-5"></i>
+                            <h6 class="font-heading mb-0">Trending Pulse</h6>
+                        </div>
+                        <span class="badge bg-secondary-subtle text-secondary border">Real-time</span>
+                    </div>
+                    <div class="d-flex flex-column flex-grow-1 justify-content-between">
+                        {% for trend in trending_articles[1:6] %}
+                        <div class="trending-item">
+                            <div class="trending-rank">0{{ loop.index }}</div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="badge py-1 px-2" style="background-color: {{ trend.source_color }}; color: white; font-size: 0.68rem;">
+                                        {{ trend.source }}
                                     </span>
-                                    <small class="text-muted">
-                                        <i class="bi bi-clock me-1"></i>
-                                        {{ article.published[:12] if article.published else 'Unknown' }}
-                                    </small>
+                                    <span class="text-muted" style="font-size: 0.72rem;">{{ trend.published_relative }}</span>
                                 </div>
-                                
-                                <div class="card-body">
-                                    <h6 class="card-title fw-bold mb-2">
-                                        <a href="{{ article.link }}" target="_blank" class="text-decoration-none">
-                                            {{ article.title }}
-                                        </a>
-                                    </h6>
-                                    
-                                    {% if article.description or article.summary %}
-                                    <p class="card-text text-muted small">
-                                        {{ (article.description or article.summary)[:150] }}{% if (article.description or article.summary)|length > 150 %}...{% endif %}
-                                    </p>
-                                    {% endif %}
-                                </div>
-                                
-                                <div class="card-footer bg-transparent border-top-0">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <a href="{{ article.link }}" target="_blank" 
-                                           class="btn btn-primary btn-sm">
-                                            <i class="bi bi-box-arrow-up-right me-1"></i>Read More
-                                        </a>
-                                        <button class="btn btn-outline-secondary btn-sm" 
-                                                onclick="shareArticle('{{ article.link }}', '{{ article.title }}')">
-                                            <i class="bi bi-share"></i>
-                                        </button>
-                                    </div>
-                                </div>
+                                <h6 class="trending-title">
+                                    <a href="{{ trend.link }}" target="_blank" rel="noopener noreferrer">
+                                        {{ trend.title }}
+                                    </a>
+                                </h6>
                             </div>
                         </div>
                         {% endfor %}
                     </div>
-                </section>
-                {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Filter & Control Center -->
+    <section class="control-panel mb-4" id="filter-controls">
+        <div class="row g-3 align-items-center">
+            <!-- Search Input -->
+            <div class="col-lg-4 col-md-5">
+                <div class="search-input-wrapper">
+                    <i class="bi bi-search"></i>
+                    <input type="text" id="live-search-input" class="search-input" placeholder="Search news, topics, keywords..." oninput="handleLiveSearch(this.value)">
+                </div>
+            </div>
+
+            <!-- Source Filter Dropdown -->
+            <div class="col-lg-3 col-md-4 col-6">
+                <div class="dropdown w-100">
+                    <button class="btn btn-action w-100 justify-content-between dropdown-toggle" type="button" data-bs-toggle="dropdown" id="source-dropdown-btn">
+                        <span><i class="bi bi-building me-1"></i> {{ selected_source or 'All 10 Sources' }}</span>
+                    </button>
+                    <ul class="dropdown-menu shadow border-0 w-100" style="background: var(--bg-surface); max-height: 300px; overflow-y: auto;">
+                        <li>
+                            <a class="dropdown-item py-2 {% if not selected_source %}fw-bold text-primary{% endif %}" href="{{ url_for('index') }}">
+                                <i class="bi bi-grid me-2"></i> All Sources ({{ all_articles|length }})
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        {% for source, articles in articles_by_source.items() %}
+                        <li>
+                            <a class="dropdown-item py-2 {% if selected_source == source %}fw-bold text-primary{% endif %}" href="{{ url_for('filter_by_source', source_name=source) }}">
+                                <i class="bi bi-dot fs-5 align-middle text-primary"></i> {{ source }} ({{ articles|length }})
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- View Mode Switcher -->
+            <div class="col-lg-5 col-md-3 col-6 text-end d-flex justify-content-end align-items-center gap-2">
+                <button class="btn btn-action" id="view-mode-grid" onclick="setViewMode('grid')" title="Grid view">
+                    <i class="bi bi-grid-3x3-gap-fill"></i>
+                </button>
+                <button class="btn btn-action" id="view-mode-compact" onclick="setViewMode('compact')" title="Compact view">
+                    <i class="bi bi-view-list"></i>
+                </button>
+                <span class="text-muted small ps-2 border-start d-none d-sm-inline" id="article-count-display">
+                    <strong>{{ all_articles|length }}</strong> stories
+                </span>
+            </div>
+        </div>
+
+        <!-- Horizontal Scrollable Category Pills -->
+        <div class="mt-3 pt-3 border-top" style="border-color: var(--border-color) !important;">
+            <div class="category-pills-scroll">
+                <a href="{{ url_for('index') }}" class="cat-pill {% if not selected_category and not selected_source %}active{% endif %}" id="pill-all">
+                    <i class="bi bi-collection-fill"></i> All Feeds
+                    <span class="badge">{{ all_articles|length }}</span>
+                </a>
+                {% for category in categories %}
+                <a href="{{ url_for('filter_by_category', category_name=category) }}" class="cat-pill {% if selected_category == category %}active{% endif %}" id="pill-{{ category|lower|replace(' ', '-') }}">
+                    {% if category == 'Breaking News' %}
+                        <i class="bi bi-lightning-fill text-danger"></i>
+                    {% elif category == 'World' %}
+                        <i class="bi bi-globe-americas"></i>
+                    {% elif category == 'Business' %}
+                        <i class="bi bi-graph-up-arrow"></i>
+                    {% elif category == 'Technology' %}
+                        <i class="bi bi-cpu"></i>
+                    {% elif category == 'Science & Health' %}
+                        <i class="bi bi-heart-pulse"></i>
+                    {% elif category == 'Politics' %}
+                        <i class="bi bi-bank"></i>
+                    {% elif category == 'Sports & Culture' %}
+                        <i class="bi bi-trophy"></i>
+                    {% else %}
+                        <i class="bi bi-tag"></i>
+                    {% endif %}
+                    {{ category }}
+                    <span class="badge">{{ categorized_articles[category]|length if category in categorized_articles else 0 }}</span>
+                </a>
                 {% endfor %}
-            {% else %}
-            <div class="text-center py-5">
-                <i class="bi bi-inbox display-1 text-muted"></i>
-                <h3 class="mt-3 text-muted">No articles found</h3>
-                <p class="text-muted">Try refreshing the feeds or selecting a different category.</p>
-                <button class="btn btn-primary" onclick="refreshFeeds()">
-                    <i class="bi bi-arrow-clockwise me-2"></i>Refresh Feeds
+            </div>
+        </div>
+    </section>
+
+    <!-- Active Filter Notice -->
+    {% if selected_category or selected_source %}
+    <div class="d-flex align-items-center justify-content-between p-3 mb-4 rounded-3" style="background: var(--bg-surface); border: 1px solid var(--border-color);">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-funnel-fill text-primary"></i>
+            <span>
+                Active Filter: <strong>{{ selected_category or selected_source }}</strong>
+                ({{ all_articles|length }} articles)
+            </span>
+        </div>
+        <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i> Clear Filter
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Main Articles Grid -->
+    <section class="articles-section" id="news-container">
+        {% if all_articles and all_articles|length > 0 %}
+        <div class="articles-grid" id="articles-grid">
+            {% for article in all_articles %}
+            <article class="article-card" data-category="{{ article.assigned_category or article.category }}" data-source="{{ article.source }}" data-title="{{ article.title|lower }}" data-desc="{{ article.description|lower }}">
+                <!-- Card Thumbnail Container -->
+                <div class="card-thumb-container">
+                    {% if article.image %}
+                    <img src="{{ article.image }}" alt="{{ article.title }}" class="card-thumb" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\'card-thumb-fallback\'><i class=\'bi bi-newspaper fallback-source-icon\'></i><span class=\'fallback-source-name\'>{{ article.source }}</span></div>';">
+                    {% else %}
+                    <div class="card-thumb-fallback">
+                        <i class="bi bi-newspaper fallback-source-icon"></i>
+                        <span class="fallback-source-name">{{ article.source }}</span>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Source Chip -->
+                    <span class="card-source-chip" style="background-color: {{ article.source_color }};">
+                        {{ article.source }}
+                    </span>
+
+                    <!-- Category Chip -->
+                    <span class="card-category-chip">
+                        {{ article.assigned_category or article.category }}
+                    </span>
+
+                    <!-- Bookmark Button -->
+                    <button class="card-bookmark-btn" onclick="toggleBookmark('{{ article.link|replace("'", "\\'") }}', '{{ article.title|replace("'", "\\'") }}', '{{ article.source|replace("'", "\\'") }}', '{{ article.image|replace("'", "\\'") if article.image else '' }}')" title="Save article" data-url="{{ article.link }}">
+                        <i class="bi bi-bookmark"></i>
+                    </button>
+                </div>
+
+                <!-- Card Body -->
+                <div class="card-content">
+                    <div class="card-meta-row">
+                        <span><i class="bi bi-clock me-1"></i>{{ article.published_relative }}</span>
+                        <span>&bull;</span>
+                        <span><i class="bi bi-stopwatch me-1"></i>{{ article.reading_time }} min read</span>
+                    </div>
+
+                    <h3 class="card-title">
+                        <a href="{{ article.link }}" target="_blank" rel="noopener noreferrer">
+                            {{ article.title }}
+                        </a>
+                    </h3>
+
+                    <p class="card-desc">
+                        {{ article.description or article.summary or 'Click to read full reporting on ' + article.source }}
+                    </p>
+                </div>
+
+                <!-- Card Footer Actions -->
+                <div class="card-footer-custom">
+                    <a href="{{ article.link }}" target="_blank" rel="noopener noreferrer" class="btn-read-more">
+                        Read Story <i class="bi bi-arrow-right"></i>
+                    </a>
+                    <div class="card-action-icons">
+                        <button class="btn-icon-action" onclick="openPreviewModal('{{ article.link|replace("'", "\\'") }}', '{{ article.title|replace("'", "\\'") }}', '{{ article.source|replace("'", "\\'") }}', '{{ article.published_relative }}')" title="Quick Preview">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn-icon-action" onclick="shareArticle('{{ article.link|replace("'", "\\'") }}', '{{ article.title|replace("'", "\\'") }}')" title="Share Story">
+                            <i class="bi bi-share"></i>
+                        </button>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <!-- Empty State -->
+        <div class="text-center py-5 my-5" id="empty-state">
+            <div class="mb-3">
+                <i class="bi bi-inbox text-muted" style="font-size: 3.5rem;"></i>
+            </div>
+            <h4 class="font-heading">No news articles found</h4>
+            <p class="text-muted small">No articles match your selected filter or search keyword.</p>
+            <div class="d-flex justify-content-center gap-2 mt-3">
+                <a href="{{ url_for('index') }}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Filters
+                </a>
+                <button class="btn btn-outline-secondary btn-sm" onclick="refreshFeeds()">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Refresh RSS Feeds
                 </button>
             </div>
-            {% endif %}
         </div>
-    </div>
-</div>
+        {% endif %}
+    </section>
 
-<!-- Floating Action Button -->
-<div class="position-fixed bottom-0 end-0 p-3">
-    <button class="btn btn-primary btn-lg rounded-circle shadow" 
-            onclick="scrollToTop()" 
-            title="Back to top">
-        <i class="bi bi-arrow-up"></i>
-    </button>
 </div>
 {% endblock %}

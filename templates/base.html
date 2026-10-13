@@ -1,161 +1,337 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Real-time news aggregator from top sources like Reuters, BBC, and CNN">
-    <meta name="keywords" content="news, rss, aggregator, reuters, bbc, cnn, breaking news">
-    
-    <title>{% block title %}{{ app_name }} - Professional News Aggregator{% endblock %}</title>
-    
+    <meta name="description" content="NewsHub - Real-time news intelligence aggregating official RSS feeds from BBC, CNN, The Guardian, Al Jazeera, TechCrunch, CNBC, and NPR with ethical web scraping and instant smart categorization.">
+    <meta name="keywords" content="news aggregator, rss feed, live breaking news, bbc, cnn, the guardian, techcrunch, al jazeera, cnbc, ethical web scraping, light dark mode">
+    <meta name="author" content="NewsHub Engineering">
+    <meta name="theme-color" content="#2563EB">
+
+    <title>{% block title %}{{ app_name }} - Real-Time News Intelligence{% endblock %}</title>
+
     <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <!-- Custom CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Custom Design System CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    
+
+    <!-- Inline Script to prevent Theme Flash -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('newshub-theme') || 
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
-                <i class="bi bi-newspaper me-2"></i>{{ app_name }}
-            </a>
-            
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('index') }}">
-                            <i class="bi bi-house me-1"></i>Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="refreshFeeds(); return false;">
-                            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
-                        </a>
-                    </li>
-                </ul>
-                
-                <div class="d-flex align-items-center">
-                    <span class="text-white me-3">
-                        <i class="bi bi-clock me-1"></i>
-                        <span id="last-updated">Loading...</span>
-                    </span>
-                    <button class="btn btn-outline-light btn-sm" onclick="toggleAutoRefresh()">
-                        <i class="bi bi-play-circle me-1"></i>
-                        <span id="auto-refresh-text">Auto Refresh</span>
+    <!-- Top Navigation -->
+    <nav class="newshub-navbar py-2">
+        <div class="container-xl">
+            <div class="d-flex align-items-center justify-content-between">
+                <!-- Brand & Logo -->
+                <div class="d-flex align-items-center gap-3">
+                    <a href="{{ url_for('index') }}" class="d-flex align-items-center gap-2 text-decoration-none" id="brand-link">
+                        <div class="brand-badge">
+                            <i class="bi bi-newspaper"></i>
+                        </div>
+                        <div>
+                            <span class="brand-title">{{ app_name }}<span>.</span></span>
+                            <span class="d-none d-md-inline-block text-muted small ms-2 ps-2 border-start">Intelligence</span>
+                        </div>
+                    </a>
+
+                    <!-- Live Sync Indicator -->
+                    <div class="live-indicator d-none d-sm-inline-flex" title="Syncing across 10 official news feeds">
+                        <span class="pulse-dot"></span>
+                        <span>{{ sources_count }} Sources Live</span>
+                    </div>
+                </div>
+
+                <!-- Center Nav Links: Strictly Home and About -->
+                <div class="d-none d-md-flex align-items-center gap-2">
+                    <a href="{{ url_for('index') }}" class="nav-link-custom {% if request.endpoint == 'index' or request.endpoint == 'filter_by_category' or request.endpoint == 'filter_by_source' %}active{% endif %}" id="nav-home">
+                        <i class="bi bi-compass"></i> Home & News
+                    </a>
+                    <a href="{{ url_for('about') }}" class="nav-link-custom {% if request.endpoint == 'about' %}active{% endif %}" id="nav-about">
+                        <i class="bi bi-info-circle"></i> About
+                    </a>
+                </div>
+
+                <!-- Right Actions: Refresh, Bookmarks, Theme Toggle, Mobile Menu -->
+                <div class="d-flex align-items-center gap-2">
+                    <!-- Refresh Button -->
+                    <button class="btn btn-action" onclick="refreshFeeds()" id="refresh-feeds-btn" title="Fetch fresh articles from RSS sources (Ctrl+R)">
+                        <i class="bi bi-arrow-clockwise" id="refresh-icon"></i>
+                        <span class="d-none d-lg-inline">Refresh</span>
                     </button>
+
+                    <!-- Auto-Refresh Toggle -->
+                    <button class="btn btn-action d-none d-sm-inline-flex" onclick="toggleAutoRefresh()" id="auto-refresh-btn" title="Toggle automatic 5-minute background refresh">
+                        <i class="bi bi-clock-history"></i>
+                        <span id="auto-refresh-label">Auto</span>
+                    </button>
+
+                    <!-- Bookmarks Drawer Button -->
+                    <button class="btn btn-action position-relative" onclick="openBookmarksModal()" id="bookmarks-btn" title="View saved articles">
+                        <i class="bi bi-bookmark-fill"></i>
+                        <span class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle d-none" id="bookmark-badge">0</span>
+                    </button>
+
+                    <!-- Theme Toggle Button -->
+                    <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle Light and Dark Mode" aria-label="Toggle Theme">
+                        <i class="bi bi-moon-stars" id="theme-icon"></i>
+                    </button>
+
+                    <!-- Mobile Menu Dropdown Toggle -->
+                    <div class="dropdown d-md-none">
+                        <button class="btn btn-action" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open Navigation Menu">
+                            <i class="bi bi-list fs-5"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="background: var(--bg-surface); color: var(--text-primary);">
+                            <li>
+                                <a class="dropdown-item py-2" href="{{ url_for('index') }}" style="color: var(--text-primary);">
+                                    <i class="bi bi-compass me-2 text-primary"></i> Home & News
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item py-2" href="{{ url_for('about') }}" style="color: var(--text-primary);">
+                                    <i class="bi bi-info-circle me-2 text-info"></i> About NewsHub
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item py-2" href="#" onclick="showStats(); return false;" style="color: var(--text-primary);">
+                                    <i class="bi bi-bar-chart-line me-2 text-success"></i> Aggregation Stats
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
     </nav>
 
-    <!-- Breaking News Banner -->
-    {% if trending_articles and trending_articles|length > 0 %}
-    <div class="breaking-news-banner bg-danger text-white py-2">
-        <div class="container">
-            <div class="d-flex align-items-center">
-                <span class="breaking-news-label bg-white text-danger px-3 py-1 rounded me-3 fw-bold">
-                    <i class="bi bi-exclamation-triangle-fill me-1"></i>BREAKING
-                </span>
-                <div class="breaking-news-ticker flex-grow-1 overflow-hidden">
-                    <div class="breaking-news-text">
-                        {% for article in trending_articles[:3] %}
-                            <span class="me-4">
-                                <strong>{{ article.source }}:</strong> 
-                                <a href="{{ article.link }}" target="_blank" class="text-white text-decoration-none">
-                                    {{ article.title }}
-                                </a>
-                            </span>
-                        {% endfor %}
-                    </div>
+    <!-- Breaking News Marquee Ticker -->
+    {% if breaking_articles %}
+    <div class="ticker-bar" id="ticker-bar">
+        <div class="ticker-label">
+            <i class="bi bi-lightning-charge-fill"></i> BREAKING
+        </div>
+        <div class="ticker-track">
+            <div class="ticker-content">
+                {% for item in breaking_articles %}
+                <div class="ticker-item">
+                    <span class="ticker-source-tag" style="background-color: {{ item.source_color }};">{{ item.source_badge }}</span>
+                    <a href="{{ item.link }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
                 </div>
+                {% endfor %}
+                <!-- Duplicate for seamless loop -->
+                {% for item in breaking_articles %}
+                <div class="ticker-item">
+                    <span class="ticker-source-tag" style="background-color: {{ item.source_color }};">{{ item.source_badge }}</span>
+                    <a href="{{ item.link }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+                </div>
+                {% endfor %}
             </div>
         </div>
     </div>
     {% endif %}
 
-    <!-- Main Content -->
-    <main class="main-content">
+    <!-- Main Content Area -->
+    <main class="flex-grow-1">
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-dark text-white py-4 mt-5">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h5>{{ app_name }}</h5>
-                    <p class="text-muted">Professional RSS News Aggregator</p>
-                    <p class="small text-muted">
-                        Real-time news from Reuters, BBC, CNN, and more.
+    <!-- Professional Footer -->
+    <footer class="newshub-footer">
+        <div class="container-xl">
+            <div class="row g-4 mb-4">
+                <div class="col-lg-5">
+                    <div class="footer-brand d-flex align-items-center gap-2">
+                        <div class="brand-badge" style="width: 32px; height: 32px; font-size: 1rem;">
+                            <i class="bi bi-newspaper"></i>
+                        </div>
+                        <span>{{ app_name }}</span>
+                    </div>
+                    <p class="text-muted small pe-lg-4">
+                        A modern, ethical news aggregation platform engineering a cleaner reading experience.
+                        Powered by 10 verified publisher RSS feeds, polite OpenGraph web scraping, and automated classification.
+                        No user tracking, no paywall manipulation, and zero advertising bloat.
                     </p>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="badge bg-secondary-subtle text-secondary border">RSS 2.0 Syndication</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">Fair Use Compliant</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">Python 3.11</span>
+                    </div>
                 </div>
-                <div class="col-md-6">
-                    <h6>Quick Links</h6>
-                    <ul class="list-unstyled">
-                        <li><a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none">Home</a></li>
-                        <li><a href="#" onclick="showStats(); return false;" class="text-white-50 text-decoration-none">Statistics</a></li>
-                        <li><a href="#" onclick="showAbout(); return false;" class="text-white-50 text-decoration-none">About</a></li>
+                <div class="col-6 col-lg-3">
+                    <h6 class="font-heading mb-3">Navigation</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-2">
+                        <li><a href="{{ url_for('index') }}" class="footer-link"><i class="bi bi-compass me-1"></i> Home / News Feed</a></li>
+                        <li><a href="{{ url_for('about') }}" class="footer-link"><i class="bi bi-info-circle me-1"></i> About & Architecture</a></li>
+                        <li><a href="#" onclick="showStats(); return false;" class="footer-link"><i class="bi bi-graph-up me-1"></i> Aggregator Stats</a></li>
+                        <li><a href="#" onclick="openBookmarksModal(); return false;" class="footer-link"><i class="bi bi-bookmarks me-1"></i> Saved Articles</a></li>
                     </ul>
                 </div>
+                <div class="col-6 col-lg-4">
+                    <h6 class="font-heading mb-3">Syndicated Sources</h6>
+                    <div class="d-flex flex-wrap gap-1">
+                        <span class="badge bg-secondary-subtle text-secondary border">BBC News</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">CNN</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">The Guardian</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">Al Jazeera</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">NPR</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">TechCrunch</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">Ars Technica</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">CNBC</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">DW News</span>
+                        <span class="badge bg-secondary-subtle text-secondary border">Google News</span>
+                    </div>
+                    <p class="text-muted small mt-2 mb-0">
+                        All articles link directly to original publishers. Headlines & snippets aggregated under public syndication standards.
+                    </p>
+                </div>
             </div>
-            <hr class="my-3 bg-secondary">
-            <div class="text-center">
-                <p class="small text-muted mb-0">
-                    &copy; {{ current_year }} {{ app_name }}. Built with Flask & Bootstrap.
-                </p>
+            <hr class="my-3" style="border-color: var(--border-color);">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2 text-muted small">
+                <div>
+                    &copy; {{ current_year }} {{ app_name }} Aggregator. All rights reserved by respective news publishers.
+                </div>
+                <div class="d-flex gap-3">
+                    <a href="{{ url_for('about') }}#ethics" class="footer-link">Ethics & Scraping Policy</a>
+                    <span>&bull;</span>
+                    <a href="{{ url_for('about') }}#sources" class="footer-link">Source Directory</a>
+                    <span>&bull;</span>
+                    <a href="{{ url_for('about') }}#apis" class="footer-link">REST APIs</a>
+                </div>
             </div>
         </div>
     </footer>
+
+    <!-- Quick Article Preview Modal (Ethical Web Scraper on-demand reader) -->
+    <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge" id="preview-source-badge" style="background: var(--brand-primary); color: white;">SOURCE</span>
+                        <span class="text-muted small" id="preview-time-ago">Recently</span>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4" id="preview-body">
+                    <!-- Loading state -->
+                    <div class="text-center py-5" id="preview-loading">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Extracting article preview...</span>
+                        </div>
+                        <p class="text-muted small mt-2">Loading ethical article preview...</p>
+                    </div>
+                    <!-- Content state -->
+                    <div id="preview-content" class="d-none">
+                        <img src="" alt="" class="preview-modal-img d-none" id="preview-img">
+                        <h4 class="font-heading mb-3" id="preview-title">Article Title</h4>
+                        <div class="d-flex align-items-center gap-3 text-muted small mb-3">
+                            <span id="preview-author"><i class="bi bi-person me-1"></i>Reporter</span>
+                            <span id="preview-reading-time"><i class="bi bi-stopwatch me-1"></i>2 min read</span>
+                        </div>
+                        <p class="text-secondary" id="preview-description"></p>
+                        <blockquote class="preview-lead-quote d-none" id="preview-lead-text"></blockquote>
+                        <div class="alert alert-secondary d-flex align-items-center gap-2 mt-4 py-2">
+                            <i class="bi bi-shield-check text-success fs-5"></i>
+                            <div class="small">
+                                Content previewed legally via OpenGraph protocol. Full text, multimedia, and original reporting remain hosted by the source publisher.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <a href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" id="preview-external-link">
+                        Read Full Article on Publisher Website <i class="bi bi-box-arrow-up-right ms-1"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Modal -->
+    <div class="modal fade" id="statsModal" tabindex="-1" aria-labelledby="statsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title font-heading" id="statsModalLabel">
+                        <i class="bi bi-bar-chart-line text-primary me-2"></i>NewsHub Aggregation Metrics
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4" id="stats-content">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted small">Loading system metrics...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Saved Bookmarks Modal -->
+    <div class="modal fade" id="bookmarksModal" tabindex="-1" aria-labelledby="bookmarksModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title font-heading" id="bookmarksModalLabel">
+                        <i class="bi bi-bookmark-star text-warning me-2"></i>Saved Articles
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div id="bookmarks-container">
+                        <!-- Populated by JavaScript from localStorage -->
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearAllBookmarks()">Clear All Saved</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Loading Modal -->
     <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-sm modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-body text-center py-4">
-                    <div class="spinner-border text-primary mb-3" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mb-0">Fetching latest news...</p>
+                    <div class="spinner-border text-primary mb-3" role="status"></div>
+                    <p class="mb-0 fw-semibold">Fetching latest news feeds...</p>
+                    <small class="text-muted">Synchronizing with 10 publishers</small>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Stats Modal -->
-    <div class="modal fade" id="statsModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-bar-chart me-2"></i>News Statistics
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="stats-content">
-                    <div class="text-center py-4">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <!-- Floating Back to Top Button -->
+    <button class="back-to-top-btn" id="backToTopBtn" onclick="scrollToTop()" title="Scroll to top" aria-label="Back to top">
+        <i class="bi bi-arrow-up"></i>
+    </button>
+
+    <!-- Custom Toast Container -->
+    <div class="custom-toast" id="app-toast">
+        <i class="bi bi-info-circle text-primary" id="toast-icon"></i>
+        <span id="toast-message">Notification</span>
     </div>
 
     <!-- Bootstrap 5 JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Custom JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom Application JS -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -1,14 +1,17 @@
 """
-RSS News Aggregator Flask Application
-A professional news aggregation platform with real-time RSS feed processing
+NewsHub RSS Aggregator - Flask Application
+A professional, modern news aggregation platform combining official RSS feeds
+and ethical web scraping with real-time categorization and light/dark theme support.
 """
 
-from flask import Flask, render_template, jsonify, request
 import os
 import logging
 from datetime import datetime
+from flask import Flask, render_template, jsonify, request
+
 from services.rss_service import RSSService
 from services.category_service import CategoryService
+from services.scraper_service import ScraperService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,144 +19,161 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-
-# Configure app
-app.config['SECRET_KEY'] = 'your-secret-key-here'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'newshub-secure-production-key-2026')
 app.config['DEBUG'] = True
 
 # Initialize services
 rss_service = RSSService(cache_duration_minutes=5)
 category_service = CategoryService()
+scraper_service = rss_service.scraper_service
 
 @app.route('/')
 def index():
-    """Main page - display all news articles"""
+    """Main Home page - display all aggregated news"""
     try:
-        # Get all articles from RSS feeds
         all_articles = rss_service.get_all_articles()
-        
-        # Categorize articles
         categorized_articles = category_service.categorize_articles(all_articles)
-        
-        # Get available categories
         categories = category_service.get_available_categories(all_articles)
-        
-        # Get trending articles
-        trending_articles = category_service.get_trending_articles(all_articles, limit=5)
-        
-        # Get articles by source
+        trending_articles = category_service.get_trending_articles(all_articles, limit=6)
         articles_by_source = rss_service.get_articles_by_source()
-        
-        # Get cache info
         cache_info = rss_service.get_cache_info()
         
+        # Dedicated breaking news list for ticker
+        breaking_articles = categorized_articles.get('Breaking News', [])
+        if not breaking_articles:
+            # Fallback to top 5 trending if no breaking news
+            breaking_articles = trending_articles[:5]
+
+        # Hero feature story
+        hero_article = trending_articles[0] if trending_articles else (all_articles[0] if all_articles else None)
+        sub_features = trending_articles[1:4] if len(trending_articles) > 1 else []
+
         return render_template(
             'index.html',
             categorized_articles=categorized_articles,
             all_articles=all_articles,
             categories=categories,
             trending_articles=trending_articles,
+            breaking_articles=breaking_articles,
+            hero_article=hero_article,
+            sub_features=sub_features,
             articles_by_source=articles_by_source,
             cache_info=cache_info,
+            sources_directory=rss_service.get_sources_directory(),
             current_time=datetime.now()
         )
-        
     except Exception as e:
-        logger.error(f"Error loading main page: {str(e)}")
+        logger.error(f"Error loading main page: {str(e)}", exc_info=True)
+        return render_template('error.html', error=str(e)), 500
+
+@app.route('/about')
+def about():
+    """Dedicated About page explaining the purpose, architecture, scraping ethics, and operation"""
+    try:
+        sources = rss_service.get_sources_directory()
+        cache_info = rss_service.get_cache_info()
+        all_articles = rss_service.get_all_articles()
+        category_stats = category_service.get_category_stats(all_articles)
+        
+        return render_template(
+            'about.html',
+            sources=sources,
+            cache_info=cache_info,
+            total_articles=len(all_articles),
+            category_stats=category_stats,
+            current_time=datetime.now()
+        )
+    except Exception as e:
+        logger.error(f"Error loading about page: {str(e)}", exc_info=True)
         return render_template('error.html', error=str(e)), 500
 
 @app.route('/category/<category_name>')
 def filter_by_category(category_name):
-    """Filter articles by category"""
+    """Filter articles by category on the Home page"""
     try:
-        # Get all articles
         all_articles = rss_service.get_all_articles()
-        
-        # Filter by category
         filtered_articles = category_service.filter_by_category(all_articles, category_name)
-        
-        # Get available categories
         categories = category_service.get_available_categories(all_articles)
+        categorized = {category_name: filtered_articles}
+        trending_articles = category_service.get_trending_articles(all_articles, limit=6)
         
+        # Breaking news for ticker
+        breaking_articles = [a for a in all_articles if a.get('assigned_category') == 'Breaking News'][:5]
+        if not breaking_articles:
+            breaking_articles = trending_articles[:5]
+
         return render_template(
             'index.html',
-            categorized_articles={category_name: filtered_articles},
+            categorized_articles=categorized,
             all_articles=filtered_articles,
             categories=categories,
             selected_category=category_name,
-            articles_by_source=rss_service.get_articles_by_source(),  # Add this
-            cache_info=rss_service.get_cache_info(),  # Add this
-            trending_articles=category_service.get_trending_articles(filtered_articles, 5),  # Add this
+            trending_articles=trending_articles,
+            breaking_articles=breaking_articles,
+            hero_article=filtered_articles[0] if filtered_articles else None,
+            sub_features=filtered_articles[1:4] if len(filtered_articles) > 1 else [],
+            articles_by_source=rss_service.get_articles_by_source(),
+            cache_info=rss_service.get_cache_info(),
+            sources_directory=rss_service.get_sources_directory(),
             current_time=datetime.now()
         )
-        
     except Exception as e:
         logger.error(f"Error filtering by category {category_name}: {str(e)}")
         return render_template('error.html', error=str(e)), 500
 
 @app.route('/source/<source_name>')
 def filter_by_source(source_name):
-    """Filter articles by source"""
+    """Filter articles by source on the Home page"""
     try:
-        # Get articles by source
         articles_by_source = rss_service.get_articles_by_source()
-        
-        # Get articles for the specified source
         source_articles = articles_by_source.get(source_name, [])
+        all_articles = rss_service.get_all_articles()
         
-        # Categorize the source articles
         categorized_articles = category_service.categorize_articles(source_articles)
+        categories = category_service.get_available_categories(all_articles)
+        trending_articles = category_service.get_trending_articles(source_articles, limit=6)
         
-        # Get available categories
-        categories = category_service.get_available_categories(source_articles)
-        
+        breaking_articles = [a for a in all_articles if a.get('assigned_category') == 'Breaking News'][:5]
+        if not breaking_articles:
+            breaking_articles = trending_articles[:5]
+
         return render_template(
             'index.html',
             categorized_articles=categorized_articles,
             all_articles=source_articles,
             categories=categories,
             selected_source=source_name,
+            trending_articles=trending_articles,
+            breaking_articles=breaking_articles,
+            hero_article=source_articles[0] if source_articles else None,
+            sub_features=source_articles[1:4] if len(source_articles) > 1 else [],
             articles_by_source=articles_by_source,
-            cache_info=rss_service.get_cache_info(),  # Add this
-            trending_articles=category_service.get_trending_articles(source_articles, 5),  # Add this
+            cache_info=rss_service.get_cache_info(),
+            sources_directory=rss_service.get_sources_directory(),
             current_time=datetime.now()
         )
-        
     except Exception as e:
         logger.error(f"Error filtering by source {source_name}: {str(e)}")
         return render_template('error.html', error=str(e)), 500
 
 @app.route('/api/refresh')
 def refresh_feeds():
-    """Refresh RSS feeds (clear cache and reload)"""
+    """Refresh RSS feeds: clear cache and re-fetch fresh articles"""
     try:
-        # Clear cache
         rss_service.clear_cache()
-        
-        # Get fresh articles
         all_articles = rss_service.get_all_articles()
-        
-        # Categorize articles
         categorized_articles = category_service.categorize_articles(all_articles)
-        
-        # Get trending articles
-        trending_articles = category_service.get_trending_articles(all_articles, limit=5)
-        
-        # Get articles by source
-        articles_by_source = rss_service.get_articles_by_source()
-        
-        # Get cache info
+        trending_articles = category_service.get_trending_articles(all_articles, limit=6)
         cache_info = rss_service.get_cache_info()
         
         return jsonify({
             'success': True,
-            'message': 'Feeds refreshed successfully',
+            'message': 'Feeds and metadata refreshed successfully',
             'total_articles': len(all_articles),
             'categories': list(categorized_articles.keys()),
             'trending_count': len(trending_articles),
             'cache_info': cache_info
         })
-        
     except Exception as e:
         logger.error(f"Error refreshing feeds: {str(e)}")
         return jsonify({
@@ -163,61 +183,62 @@ def refresh_feeds():
 
 @app.route('/api/articles')
 def get_articles_api():
-    """API endpoint to get articles with optional filtering"""
+    """REST API endpoint to retrieve articles with optional filtering and search"""
     try:
-        # Get query parameters
         category = request.args.get('category', 'all')
         source = request.args.get('source', 'all')
+        query = request.args.get('q', '').strip().lower()
         limit = int(request.args.get('limit', 50))
         
-        # Get all articles
         all_articles = rss_service.get_all_articles()
-        
-        # Apply filters
-        filtered_articles = all_articles
+        filtered = all_articles
         
         if category != 'all':
-            filtered_articles = category_service.filter_by_category(filtered_articles, category)
+            filtered = category_service.filter_by_category(filtered, category)
         
         if source != 'all':
-            filtered_articles = [article for article in filtered_articles if article.get('source') == source]
+            filtered = [a for a in filtered if a.get('source', '').lower() == source.lower()]
+            
+        if query:
+            filtered = [
+                a for a in filtered
+                if query in a.get('title', '').lower() or query in a.get('description', '').lower()
+            ]
+            
+        total_matched = len(filtered)
+        filtered = filtered[:limit]
         
-        # Limit results
-        filtered_articles = filtered_articles[:limit]
-        
+        # Serialize datetime objects for clean JSON output
+        serializable_articles = []
+        for art in filtered:
+            clean_art = dict(art)
+            if 'published_dt' in clean_art:
+                del clean_art['published_dt']
+            serializable_articles.append(clean_art)
+            
         return jsonify({
             'success': True,
-            'articles': filtered_articles,
-            'total': len(filtered_articles),
+            'articles': serializable_articles,
+            'total': total_matched,
+            'limit': limit,
             'filters': {
                 'category': category,
                 'source': source,
-                'limit': limit
+                'q': query
             }
         })
-        
     except Exception as e:
-        logger.error(f"Error in API endpoint: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Error in articles API: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/stats')
 def get_stats():
-    """API endpoint to get statistics"""
+    """REST API endpoint to retrieve system aggregation and distribution statistics"""
     try:
-        # Get all articles
         all_articles = rss_service.get_all_articles()
-        
-        # Get category stats
         category_stats = category_service.get_category_stats(all_articles)
-        
-        # Get source stats
         articles_by_source = rss_service.get_articles_by_source()
         source_stats = {source: len(articles) for source, articles in articles_by_source.items()}
-        
-        # Get cache info
         cache_info = rss_service.get_cache_info()
         
         return jsonify({
@@ -226,43 +247,60 @@ def get_stats():
                 'total_articles': len(all_articles),
                 'category_distribution': category_stats,
                 'source_distribution': source_stats,
+                'total_sources': len(source_stats),
                 'cache_info': cache_info,
                 'last_updated': datetime.now().isoformat()
             }
         })
-        
     except Exception as e:
-        logger.error(f"Error getting stats: {str(e)}")
+        logger.error(f"Error getting statistics: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/preview')
+def get_article_preview():
+    """
+    Ethical web scraping preview endpoint: extracts OpenGraph metadata,
+    high-res lead image, and article snippet on demand.
+    """
+    url = request.args.get('url', '').strip()
+    if not url:
+        return jsonify({'success': False, 'error': 'Missing url parameter'}), 400
+        
+    try:
+        metadata = scraper_service.extract_metadata(url)
         return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+            'success': True,
+            'metadata': metadata
+        })
+    except Exception as e:
+        logger.error(f"Error scraping preview for {url}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.errorhandler(404)
 def not_found(error):
-    """Handle 404 errors"""
-    return render_template('error.html', error='Page not found'), 404
+    """Handle 404 Not Found errors"""
+    return render_template('error.html', error='Page not found. The requested news item or page does not exist.'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handle 500 errors"""
-    return render_template('error.html', error='Internal server error'), 500
+    """Handle 500 Internal Server errors"""
+    return render_template('error.html', error='Internal Server Error. Please refresh the page or try again in a moment.'), 500
 
 @app.context_processor
 def inject_globals():
-    """Inject global variables into templates"""
+    """Inject global variables into Jinja2 templates"""
     return {
         'app_name': 'NewsHub',
-        'current_year': datetime.now().year
+        'app_tagline': 'Real-Time News Intelligence & RSS Syndication',
+        'current_year': datetime.now().year,
+        'sources_count': len(rss_service.rss_sources)
     }
 
 if __name__ == '__main__':
-    # Create required directories if they don't exist
     os.makedirs('templates', exist_ok=True)
     os.makedirs('static/css', exist_ok=True)
     os.makedirs('static/js', exist_ok=True)
     
-    # Run the Flask application
     app.run(
         host='0.0.0.0',
         port=5000,
