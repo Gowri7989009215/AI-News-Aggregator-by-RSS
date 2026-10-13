@@ -116,11 +116,15 @@
         </div>
     </nav>
 
-    <!-- Breaking News Marquee Ticker -->
+    <!-- Breaking News / Top Stories Marquee Ticker -->
     {% if breaking_articles %}
     <div class="ticker-bar" id="ticker-bar">
-        <div class="ticker-label">
+        <div class="ticker-label" style="{% if not ticker_is_breaking %}background: var(--brand-primary);{% endif %}">
+            {% if ticker_is_breaking %}
             <i class="bi bi-lightning-charge-fill"></i> BREAKING
+            {% else %}
+            <i class="bi bi-fire"></i> TOP STORIES
+            {% endif %}
         </div>
         <div class="ticker-track">
             <div class="ticker-content">

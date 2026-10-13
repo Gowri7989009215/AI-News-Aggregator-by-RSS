@@ -1,7 +1,7 @@
 """
 NewsHub RSS Aggregator - Flask Application
 A professional, modern news aggregation platform combining official RSS feeds
-and ethical web scraping with real-time categorization and light/dark theme support.
+and ethical web scraping with verified categorization, deduplication, and light/dark theme support.
 """
 
 import os
@@ -29,7 +29,7 @@ scraper_service = rss_service.scraper_service
 
 @app.route('/')
 def index():
-    """Main Home page - display all aggregated news"""
+    """Main Home page - display verified and deduplicated aggregated news"""
     try:
         all_articles = rss_service.get_all_articles()
         categorized_articles = category_service.categorize_articles(all_articles)
@@ -38,11 +38,17 @@ def index():
         articles_by_source = rss_service.get_articles_by_source()
         cache_info = rss_service.get_cache_info()
         
-        # Dedicated breaking news list for ticker
-        breaking_articles = categorized_articles.get('Breaking News', [])
+        # Dedicated verified breaking news list for ticker
+        breaking_candidates = categorized_articles.get('Breaking News', [])
+        breaking_articles = [
+            a for a in breaking_candidates
+            if not a.get('is_unverified') and not a.get('is_outdated')
+        ]
+        
+        ticker_is_breaking = len(breaking_articles) > 0
         if not breaking_articles:
-            # Fallback to top 5 trending if no breaking news
-            breaking_articles = trending_articles[:5]
+            # Fallback to verified top trending stories (never fabricate breaking claims)
+            breaking_articles = [a for a in trending_articles if not a.get('is_unverified')][:5]
 
         # Hero feature story
         hero_article = trending_articles[0] if trending_articles else (all_articles[0] if all_articles else None)
@@ -55,6 +61,7 @@ def index():
             categories=categories,
             trending_articles=trending_articles,
             breaking_articles=breaking_articles,
+            ticker_is_breaking=ticker_is_breaking,
             hero_article=hero_article,
             sub_features=sub_features,
             articles_by_source=articles_by_source,
@@ -68,7 +75,7 @@ def index():
 
 @app.route('/about')
 def about():
-    """Dedicated About page explaining the purpose, architecture, scraping ethics, and operation"""
+    """Dedicated About page explaining purpose, architecture, validation, ethics, and operation"""
     try:
         sources = rss_service.get_sources_directory()
         cache_info = rss_service.get_cache_info()
@@ -97,10 +104,15 @@ def filter_by_category(category_name):
         categorized = {category_name: filtered_articles}
         trending_articles = category_service.get_trending_articles(all_articles, limit=6)
         
-        # Breaking news for ticker
-        breaking_articles = [a for a in all_articles if a.get('assigned_category') == 'Breaking News'][:5]
+        breaking_candidates = [a for a in all_articles if a.get('assigned_category') == 'Breaking News']
+        breaking_articles = [
+            a for a in breaking_candidates
+            if not a.get('is_unverified') and not a.get('is_outdated')
+        ][:5]
+        
+        ticker_is_breaking = len(breaking_articles) > 0
         if not breaking_articles:
-            breaking_articles = trending_articles[:5]
+            breaking_articles = [a for a in trending_articles if not a.get('is_unverified')][:5]
 
         return render_template(
             'index.html',
@@ -110,6 +122,7 @@ def filter_by_category(category_name):
             selected_category=category_name,
             trending_articles=trending_articles,
             breaking_articles=breaking_articles,
+            ticker_is_breaking=ticker_is_breaking,
             hero_article=filtered_articles[0] if filtered_articles else None,
             sub_features=filtered_articles[1:4] if len(filtered_articles) > 1 else [],
             articles_by_source=rss_service.get_articles_by_source(),
@@ -133,9 +146,15 @@ def filter_by_source(source_name):
         categories = category_service.get_available_categories(all_articles)
         trending_articles = category_service.get_trending_articles(source_articles, limit=6)
         
-        breaking_articles = [a for a in all_articles if a.get('assigned_category') == 'Breaking News'][:5]
+        breaking_candidates = [a for a in all_articles if a.get('assigned_category') == 'Breaking News']
+        breaking_articles = [
+            a for a in breaking_candidates
+            if not a.get('is_unverified') and not a.get('is_outdated')
+        ][:5]
+        
+        ticker_is_breaking = len(breaking_articles) > 0
         if not breaking_articles:
-            breaking_articles = trending_articles[:5]
+            breaking_articles = [a for a in trending_articles if not a.get('is_unverified')][:5]
 
         return render_template(
             'index.html',
@@ -145,6 +164,7 @@ def filter_by_source(source_name):
             selected_source=source_name,
             trending_articles=trending_articles,
             breaking_articles=breaking_articles,
+            ticker_is_breaking=ticker_is_breaking,
             hero_article=source_articles[0] if source_articles else None,
             sub_features=source_articles[1:4] if len(source_articles) > 1 else [],
             articles_by_source=articles_by_source,
@@ -158,7 +178,7 @@ def filter_by_source(source_name):
 
 @app.route('/api/refresh')
 def refresh_feeds():
-    """Refresh RSS feeds: clear cache and re-fetch fresh articles"""
+    """Refresh RSS feeds: clear cache and re-fetch fresh verified articles"""
     try:
         rss_service.clear_cache()
         all_articles = rss_service.get_all_articles()
@@ -208,12 +228,17 @@ def get_articles_api():
         total_matched = len(filtered)
         filtered = filtered[:limit]
         
-        # Serialize datetime objects for clean JSON output
+        # Serialize datetime and set objects for clean JSON output
         serializable_articles = []
         for art in filtered:
             clean_art = dict(art)
             if 'published_dt' in clean_art:
                 del clean_art['published_dt']
+            if 'fetched_dt' in clean_art:
+                clean_art['fetched_at'] = clean_art['fetched_dt'].isoformat()
+                del clean_art['fetched_dt']
+            if 'normalized_tokens' in clean_art:
+                del clean_art['normalized_tokens']
             serializable_articles.append(clean_art)
             
         return jsonify({
@@ -241,6 +266,11 @@ def get_stats():
         source_stats = {source: len(articles) for source, articles in articles_by_source.items()}
         cache_info = rss_service.get_cache_info()
         
+        # Verification breakdown
+        unverified_count = sum(1 for a in all_articles if a.get('is_unverified'))
+        outdated_count = sum(1 for a in all_articles if a.get('is_outdated'))
+        multi_reported_count = sum(1 for a in all_articles if a.get('alternative_sources'))
+
         return jsonify({
             'success': True,
             'stats': {
@@ -248,6 +278,12 @@ def get_stats():
                 'category_distribution': category_stats,
                 'source_distribution': source_stats,
                 'total_sources': len(source_stats),
+                'verification_metrics': {
+                    'verified_reports': len(all_articles) - unverified_count,
+                    'developing_claims': unverified_count,
+                    'outdated_articles': outdated_count,
+                    'cross_reported_stories': multi_reported_count
+                },
                 'cache_info': cache_info,
                 'last_updated': datetime.now().isoformat()
             }

@@ -1,6 +1,7 @@
 """
 RSS Service Module
-Handles fetching, parsing, caching, and media extraction for reliable RSS sources.
+Handles fetching, parsing, caching, validation, media extraction,
+and deduplication for reliable RSS news sources.
 """
 
 import re
@@ -14,39 +15,20 @@ import feedparser
 from bs4 import BeautifulSoup
 
 from services.scraper_service import ScraperService
+from services.validation_service import ValidationService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def format_relative_time(dt: Optional[datetime]) -> str:
-    """Format datetime into a human-friendly relative string"""
-    if not dt:
-        return "Recently"
-    now = datetime.now()
-    diff = now - dt
-    total_seconds = int(diff.total_seconds())
-    
-    if total_seconds < 0 or total_seconds < 60:
-        return "Just now"
-    minutes = total_seconds // 60
-    if minutes < 60:
-        return f"{minutes}m ago"
-    hours = minutes // 60
-    if hours < 24:
-        return f"{hours}h ago"
-    days = hours // 24
-    if days < 7:
-        return f"{days}d ago"
-    return dt.strftime("%b %d, %Y")
-
 class RSSService:
-    """Service for fetching and parsing reliable RSS news feeds with caching and media enrichment"""
+    """Service for fetching, validating, and parsing reliable RSS news feeds"""
     
     def __init__(self, cache_duration_minutes: int = 5):
         self.cache_duration = timedelta(minutes=cache_duration_minutes)
         self.cache: Dict[str, Dict[str, Any]] = {}
         self.scraper_service = ScraperService(cache_duration_minutes=30)
+        self.validation_service = ValidationService()
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -54,7 +36,7 @@ class RSSService:
             'Accept': 'application/rss+xml, application/xml, text/xml, */*'
         })
         
-        # 10 Reliable, Officially Maintained RSS Sources
+        # 10 Reliable, Officially Maintained RSS Sources with Trust Tiers
         self.rss_sources: Dict[str, Dict[str, Any]] = {
             'BBC News': {
                 'url': 'http://feeds.bbci.co.uk/news/rss.xml',
@@ -62,15 +44,19 @@ class RSSService:
                 'description': 'British Broadcasting Corporation global coverage',
                 'color': '#bb1919',
                 'badge': 'BBC',
-                'homepage': 'https://www.bbc.com/news'
+                'homepage': 'https://www.bbc.com/news',
+                'tier': 1,
+                'tier_label': 'Tier 1: Public Broadcaster'
             },
             'CNN': {
                 'url': 'http://rss.cnn.com/rss/edition.rss',
-                'category': 'General',
+                'category': 'World',
                 'description': 'Cable News Network international headlines',
                 'color': '#cc0000',
                 'badge': 'CNN',
-                'homepage': 'https://edition.cnn.com'
+                'homepage': 'https://edition.cnn.com',
+                'tier': 1,
+                'tier_label': 'Tier 1: International Network'
             },
             'The Guardian': {
                 'url': 'https://www.theguardian.com/world/rss',
@@ -78,7 +64,9 @@ class RSSService:
                 'description': 'Independent international journalism and commentary',
                 'color': '#052962',
                 'badge': 'Guardian',
-                'homepage': 'https://www.theguardian.com'
+                'homepage': 'https://www.theguardian.com',
+                'tier': 1,
+                'tier_label': 'Tier 1: Independent Publisher'
             },
             'Al Jazeera': {
                 'url': 'https://www.aljazeera.com/xml/rss/all.xml',
@@ -86,15 +74,19 @@ class RSSService:
                 'description': 'Comprehensive news and perspectives from the global south',
                 'color': '#fa6400',
                 'badge': 'AJ',
-                'homepage': 'https://www.aljazeera.com'
+                'homepage': 'https://www.aljazeera.com',
+                'tier': 1,
+                'tier_label': 'Tier 1: Global News Network'
             },
             'NPR News': {
                 'url': 'https://feeds.npr.org/1001/rss.xml',
-                'category': 'Domestic',
+                'category': 'Politics',
                 'description': 'National Public Radio independent US & world reporting',
                 'color': '#2b78c5',
                 'badge': 'NPR',
-                'homepage': 'https://www.npr.org'
+                'homepage': 'https://www.npr.org',
+                'tier': 1,
+                'tier_label': 'Tier 1: Public Broadcaster'
             },
             'TechCrunch': {
                 'url': 'https://techcrunch.com/feed/',
@@ -102,7 +94,9 @@ class RSSService:
                 'description': 'High-impact technology startups, AI, and venture capital',
                 'color': '#00a562',
                 'badge': 'TechCrunch',
-                'homepage': 'https://techcrunch.com'
+                'homepage': 'https://techcrunch.com',
+                'tier': 1,
+                'tier_label': 'Tier 1: Tech Journalism'
             },
             'Ars Technica': {
                 'url': 'https://feeds.arstechnica.com/arstechnica/index',
@@ -110,7 +104,9 @@ class RSSService:
                 'description': 'Deep-dive technology, IT policy, science, and computing',
                 'color': '#ff4e00',
                 'badge': 'Ars',
-                'homepage': 'https://arstechnica.com'
+                'homepage': 'https://arstechnica.com',
+                'tier': 1,
+                'tier_label': 'Tier 1: Science & Tech Journalism'
             },
             'CNBC': {
                 'url': 'https://www.cnbc.com/id/100003114/device/rss/rss.html',
@@ -118,7 +114,9 @@ class RSSService:
                 'description': 'Global financial markets, business leaders, and economy',
                 'color': '#005594',
                 'badge': 'CNBC',
-                'homepage': 'https://www.cnbc.com'
+                'homepage': 'https://www.cnbc.com',
+                'tier': 1,
+                'tier_label': 'Tier 1: Financial Media'
             },
             'DW News': {
                 'url': 'https://rss.dw.com/rdf/rss-en-all',
@@ -126,15 +124,19 @@ class RSSService:
                 'description': 'Deutsche Welle unbiased international news from Germany',
                 'color': '#002d62',
                 'badge': 'DW',
-                'homepage': 'https://www.dw.com'
+                'homepage': 'https://www.dw.com',
+                'tier': 1,
+                'tier_label': 'Tier 1: Public Broadcaster'
             },
             'Google News': {
                 'url': 'https://news.google.com/rss',
-                'category': 'General',
+                'category': 'World',
                 'description': 'Aggregated top trending headlines worldwide',
                 'color': '#4285f4',
                 'badge': 'Google',
-                'homepage': 'https://news.google.com'
+                'homepage': 'https://news.google.com',
+                'tier': 2,
+                'tier_label': 'Tier 2: News Aggregator'
             }
         }
     
@@ -144,7 +146,7 @@ class RSSService:
             return False
         cached_time = self.cache[cache_key]['timestamp']
         return datetime.now() - cached_time < self.cache_duration
-    
+
     def _extract_image_from_entry(self, entry: Any) -> Optional[str]:
         """Extract article thumbnail/image from multiple RSS metadata sources"""
         # 1. media_thumbnail
@@ -204,36 +206,16 @@ class RSSService:
         clean = re.sub(r'\s+', ' ', clean).strip()
         return clean
 
-    def _parse_entry_datetime(self, entry: Any) -> tuple[Optional[datetime], str]:
-        """Convert entry published or updated date into a datetime and relative string"""
-        dt = None
-        if hasattr(entry, 'published_parsed') and entry.published_parsed:
-            try:
-                dt = datetime(*entry.published_parsed[:6])
-            except (TypeError, ValueError):
-                pass
-        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
-            try:
-                dt = datetime(*entry.updated_parsed[:6])
-            except (TypeError, ValueError):
-                pass
-        
-        if dt is None:
-            dt = datetime.now()
-            
-        rel_time = format_relative_time(dt)
-        return dt, rel_time
-
     def _fetch_single_feed(self, source_name: str, source_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch and parse a single RSS feed"""
+        """Fetch, validate, and parse a single RSS feed with robust error recovery"""
         cache_key = f"{source_name}_{source_info['url']}"
         
-        # Check cache first
         if self._is_cache_valid(cache_key):
             return {
                 'source': source_name,
                 'articles': self.cache[cache_key]['articles'],
-                'cached': True
+                'cached': True,
+                'status': 'Healthy'
             }
         
         try:
@@ -242,68 +224,102 @@ class RSSService:
             response.raise_for_status()
             
             feed = feedparser.parse(response.content)
+            if feed.bozo and not feed.entries:
+                logger.warning(f"Feed parser warning for {source_name}: {feed.bozo_exception}")
+
             articles = []
+            fetch_time = datetime.now()
             
-            for entry in feed.entries[:25]:  # Limit to 25 per source
+            for entry in feed.entries[:25]:
                 if not hasattr(entry, 'title') or not hasattr(entry, 'link'):
                     continue
                 
                 title = entry.get('title', '').strip()
                 link = entry.get('link', '').strip()
                 
-                if not title or not link:
+                # 1. LINK VALIDATION & CANONICAL NORMALIZATION
+                is_valid_url, canonical_url, err = self.validation_service.validate_url(link)
+                if not is_valid_url or not title:
+                    logger.debug(f"Skipping invalid article link {link}: {err}")
                     continue
+
+                # 2. DATE INTEGRITY (True published date vs fetched date)
+                published_dt, rel_time, is_verified_date = self.validation_service.parse_publication_date(entry)
+                is_outdated, outdated_label = self.validation_service.check_staleness(published_dt)
                 
-                # Clean description / summary
+                # Recently published: published within last 3 hours
+                is_recently_published = False
+                if published_dt and (fetch_time - published_dt) < timedelta(hours=3):
+                    is_recently_published = True
+
+                # 3. TEXT SANITIZATION
                 desc = self._clean_text(entry.get('description', '') or entry.get('summary', ''))
-                # If description is identical to title, leave empty
                 if desc.lower() == title.lower():
                     desc = ""
+
+                # 4. CLAIM VERIFICATION CHECK (Unverified/speculative claim vs verified report)
+                is_unverified, claim_label = self.validation_service.evaluate_claim_verification(title, desc)
+
+                # 5. SOURCE ATTRIBUTION & ORIGINAL PUBLISHER
+                original_publisher = self.validation_service.extract_original_publisher(title, source_name)
                 
-                # Image extraction
+                # 6. HEADLINE NORMALIZATION FOR DEDUPLICATION
+                tokens, norm_title = self.validation_service.normalize_headline(title)
+
+                # 7. IMAGE & READING TIME
                 image_url = self._extract_image_from_entry(entry)
-                
-                # Datetime extraction
-                dt, rel_time = self._parse_entry_datetime(entry)
-                
-                # Estimated reading time
                 word_count = len((title + " " + desc).split())
                 reading_time = max(1, round(word_count / 35))
-                
-                # Author
-                author = entry.get('author') or source_name
-                
+                author = entry.get('author') or original_publisher
+
                 article = {
                     'title': title,
                     'link': link,
+                    'canonical_url': canonical_url,
+                    'normalized_tokens': tokens,
+                    'normalized_headline': norm_title,
                     'description': desc,
                     'summary': desc,
-                    'published': dt.strftime("%b %d, %Y %H:%M") if dt else "Recent",
-                    'published_dt': dt,
+                    'published': published_dt.strftime("%b %d, %Y %H:%M") if published_dt else "Unverified",
+                    'published_dt': published_dt,
                     'published_relative': rel_time,
-                    'published_iso': dt.isoformat() if dt else datetime.now().isoformat(),
+                    'published_iso': published_dt.isoformat() if published_dt else None,
+                    'is_verified_date': is_verified_date,
+                    'fetched_dt': fetch_time,
+                    'fetched_relative': "Just now",
+                    'is_recently_published': is_recently_published,
+                    'is_outdated': is_outdated,
+                    'outdated_label': outdated_label,
+                    'is_unverified': is_unverified,
+                    'claim_label': claim_label,
+                    'trust_tier': source_info.get('tier', 1),
+                    'trust_label': source_info.get('tier_label', 'Tier 1'),
                     'category': entry.get('category', source_info['category']),
                     'source': source_name,
+                    'original_publisher': original_publisher,
                     'source_badge': source_info.get('badge', source_name[:3]),
                     'source_color': source_info.get('color', '#4F46E5'),
                     'source_homepage': source_info.get('homepage', '#'),
                     'image': image_url,
                     'reading_time': reading_time,
-                    'author': author
+                    'author': author,
+                    'alternative_sources': []
                 }
                 
                 articles.append(article)
             
-            # Cache the results
+            # Cache results
             self.cache[cache_key] = {
                 'articles': articles,
-                'timestamp': datetime.now()
+                'timestamp': fetch_time,
+                'status': 'Healthy'
             }
             
             return {
                 'source': source_name,
                 'articles': articles,
-                'cached': False
+                'cached': False,
+                'status': 'Healthy'
             }
             
         except requests.RequestException as e:
@@ -312,7 +328,8 @@ class RSSService:
                 'source': source_name,
                 'articles': [],
                 'error': str(e),
-                'cached': False
+                'cached': False,
+                'status': f'Error: {str(e)}'
             }
         except Exception as e:
             logger.error(f"Error parsing {source_name}: {str(e)}")
@@ -320,7 +337,8 @@ class RSSService:
                 'source': source_name,
                 'articles': [],
                 'error': str(e),
-                'cached': False
+                'cached': False,
+                'status': f'Parse Error: {str(e)}'
             }
     
     def fetch_all_feeds(self) -> List[Dict[str, Any]]:
@@ -343,51 +361,75 @@ class RSSService:
                         'source': source_name,
                         'articles': [],
                         'error': str(e),
-                        'cached': False
+                        'cached': False,
+                        'status': 'Exception'
                     })
         
         return results
     
     def get_all_articles(self) -> List[Dict[str, Any]]:
-        """Get all articles combined and sorted by recency"""
+        """
+        Get all articles combined, deduplicated, and sorted by verified publication date.
+        """
         feeds = self.fetch_all_feeds()
         all_articles = []
         
         for feed in feeds:
             all_articles.extend(feed.get('articles', []))
         
-        # Sort by publication date (newest first)
+        # DEDUPLICATION: Canonical URLs & normalized headlines
+        unique_articles = self.validation_service.deduplicate_articles(all_articles)
+        
+        # Sort by verified publication date (newest first)
         def sort_key(item):
             dt = item.get('published_dt')
             if dt and isinstance(dt, datetime):
                 return dt
             return datetime.min
         
-        all_articles.sort(key=sort_key, reverse=True)
-        return all_articles
+        unique_articles.sort(key=sort_key, reverse=True)
+        return unique_articles
     
     def get_articles_by_source(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Get articles grouped by source name"""
-        feeds = self.fetch_all_feeds()
-        articles_by_source = {}
-        for feed in feeds:
-            source_name = feed['source']
-            articles_by_source[source_name] = feed.get('articles', [])
+        """Get articles grouped by source name after validation"""
+        all_articles = self.get_all_articles()
+        articles_by_source: Dict[str, List[Dict[str, Any]]] = {}
+        
+        # Initialize keys
+        for src in self.rss_sources.keys():
+            articles_by_source[src] = []
+            
+        for article in all_articles:
+            src = article.get('source', '')
+            if src in articles_by_source:
+                articles_by_source[src].append(article)
+            else:
+                articles_by_source[src] = [article]
+                
         return articles_by_source
     
     def clear_cache(self):
-        """Clear the RSS cache"""
+        """Clear all in-memory caches"""
         self.cache.clear()
         self.scraper_service.metadata_cache.clear()
         logger.info("NewsHub caches cleared successfully")
     
     def get_cache_info(self) -> Dict[str, Any]:
-        """Get cache diagnostic info"""
+        """Get cache diagnostic info with source health breakdown"""
+        sources_status = {}
+        for name, info in self.rss_sources.items():
+            cache_key = f"{name}_{info['url']}"
+            if cache_key in self.cache:
+                sources_status[name] = self.cache[cache_key].get('status', 'Healthy')
+            else:
+                sources_status[name] = 'Pending'
+
         return {
             'cache_size': len(self.cache),
             'cache_duration_minutes': self.cache_duration.total_seconds() / 60,
             'cached_sources': list(self.cache.keys()),
-            'metadata_cache_size': len(self.scraper_service.metadata_cache)
+            'metadata_cache_size': len(self.scraper_service.metadata_cache),
+            'sources_health': sources_status
         }
 
     def get_sources_directory(self) -> List[Dict[str, Any]]:
@@ -404,6 +446,8 @@ class RSSService:
                 'badge': info.get('badge', name[:3]),
                 'color': info.get('color', '#4F46E5'),
                 'homepage': info.get('homepage', '#'),
+                'tier': info.get('tier', 1),
+                'tier_label': info.get('tier_label', 'Tier 1: Official News Publisher'),
                 'articles_count': article_count,
                 'status': 'Online'
             })
