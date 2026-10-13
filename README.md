@@ -7,7 +7,7 @@
 [![Feedparser](https://img.shields.io/badge/Feedparser-6.0.10-orange?style=flat)](https://feedparser.readthedocs.io)
 [![BeautifulSoup4](https://img.shields.io/badge/BeautifulSoup-4.12.2-green?style=flat)](https://www.crummy.com/software/BeautifulSoup/)
 [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.3.2-7952B3?style=flat&logo=bootstrap&logoColor=white)](https://getbootstrap.com)
-[![Tests](https://img.shields.io/badge/Tests-10%20Passing-brightgreen?style=flat)](tests/test_app.py)
+[![Tests](https://img.shields.io/badge/Tests-11%20Passing-brightgreen?style=flat)](tests/test_app.py)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -497,14 +497,18 @@ Run the test suite with verbose output:
 pytest -v
 ```
 
-The test suite covers:
-- Canonical URL validation and query parameter stripping (`utm_*`, `at_*`, `ocid`, fragments)
-- Headline normalization and Jaccard token deduplication
-- Preservation of original publication timestamps and staleness flagging (> 48 hours)
-- Claim verification and unverified report detection
-- Breaking news qualification guards (blocking stale, entertainment, or unverified claims)
-- Topic categorization accuracy
-- Flask route rendering and API JSON output
+The comprehensive test suite covers:
+1. **Canonical URL Validation (`test_url_validation_and_tracking_stripping`)**: Rejects illegal schemes (`javascript:`, `file:`, `ftp:`) and strips tracking parameters (`utm_*`, `at_*`, `ocid`, `ref`, fragments).
+2. **Headline Normalization & Deduplication (`test_headline_normalization_and_deduplication`)**: Strips publisher suffixes, tokenizes headlines, calculates Jaccard token similarity (&ge; 0.72), and merges duplicate syndicated reports while citing alternate sources.
+3. **Date Preservation & Staleness Flagging (`test_date_preservation_and_staleness`)**: Normalizes timestamps in UTC to avoid machine timezone skew, preserves authentic publisher dates, prevents old news from displaying as "Just now", and flags stale (> 48h) or archived (> 7d) stories.
+4. **Claim Verification (`test_claim_verification_and_unverified_flagging`)**: Detects speculative phrases (*"unconfirmed reports"*, *"sources allege"*) and tags articles with developing claim badges while preventing unverified items from becoming breaking news.
+5. **Breaking News Guardrails (`test_breaking_news_contextual_guardrails`)**: Enforces strict contextual checks blocking stale events (> 6h), entertainment ("movie shooting"), sports ("baseball strike"), or unverified reports from the breaking ticker.
+6. **Compound Category Scoring (`test_accurate_category_scoring`)**: Validates accurate multi-keyword topic classification across Technology, Business, and Science & Health.
+7. **Cross-Source Category Accuracy (`test_cross_source_category_accuracy`)**: Verifies that specific topic keywords override source defaults (e.g., Ars Technica measles articles classify as `Science & Health`, not `Technology`; BBC growth forecast articles classify as `Business`, not `World`).
+8. **Home Page Route & Verification Indicators (`test_home_page_elements`)**: Confirms live feed aggregation, hero card rendering, and ticker bar generation.
+9. **About Page Architecture Documentation (`test_about_page_verification_sections`)**: Validates rendering of the verification pipeline, deduplication math, trust tiers, and system limitations.
+10. **System Diagnostics & Verification Metrics API (`test_api_stats_verification_metrics`)**: Ensures `/api/stats` accurately calculates real-time verified reports, developing claims, and outdated articles.
+11. **REST Articles API Filtering (`test_api_articles_filtering`)**: Verifies clean JSON serialization, category filtering, search querying, and limit parameters.
 
 ---
 

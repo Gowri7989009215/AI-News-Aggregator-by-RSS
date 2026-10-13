@@ -244,6 +244,34 @@ def test_accurate_category_scoring():
     }
     assert categorizer.classify_article(health_article) == 'Science & Health'
 
+def test_cross_source_category_accuracy():
+    """Verify that specific topics override publisher defaults (e.g. measles on Ars Technica -> Science & Health, growth forecast on BBC -> Business)"""
+    categorizer = CategoryService()
+    
+    # Ars Technica measles story should classify as Science & Health, NOT Technology
+    ars_measles = {
+        'title': 'Measles outbreak spreads across three states as vaccination rates fall',
+        'description': 'Public health officials and hospital doctors urge parents to get children vaccinated.',
+        'source': 'Ars Technica'
+    }
+    assert categorizer.classify_article(ars_measles) == 'Science & Health'
+    
+    # BBC growth forecast story should classify as Business, NOT World
+    bbc_growth = {
+        'title': 'IMF cuts global growth forecast as energy prices and inflation squeeze households',
+        'description': 'Central banks navigate interest rates and economic headwinds.',
+        'source': 'BBC News'
+    }
+    assert categorizer.classify_article(bbc_growth) == 'Business'
+    
+    # TechCrunch generic startup article should retain Technology
+    tc_generic = {
+        'title': 'Demo Day highlights latest batch of startup founders in Silicon Valley',
+        'description': 'Founders pitch their developer api and cloud computing tools.',
+        'source': 'TechCrunch'
+    }
+    assert categorizer.classify_article(tc_generic) == 'Technology'
+
 # ==============================================================================
 # 6. FLASK ROUTE & API VERIFICATION TESTS
 # ==============================================================================

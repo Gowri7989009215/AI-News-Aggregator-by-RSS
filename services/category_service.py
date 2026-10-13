@@ -6,7 +6,7 @@ and verification-informed trending algorithms.
 
 import re
 from typing import List, Dict, Any, Set, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 class CategoryService:
     """Service for classifying news articles accurately without false positives"""
@@ -57,12 +57,13 @@ class CategoryService:
             'Business': {
                 'priority': 2,
                 'keywords': [
-                    'economy', 'economic', 'inflation', 'interest rate', 'federal reserve',
+                    'economy', 'economic', 'inflation', 'interest rate', 'interest rates', 'federal reserve',
                     'wall street', 'dow jones', 'nasdaq', 's&p 500', 'stock market', 'stocks',
-                    'investors', 'earnings report', 'quarterly revenue', 'profit margin',
-                    'treasury yields', 'banking sector', 'central bank', 'merger', 'acquisition',
+                    'investors', 'earnings report', 'quarterly revenue', 'profit margin', 'quarterly profit',
+                    'treasury yields', 'banking sector', 'central bank', 'central banks', 'merger', 'acquisition',
                     'ipo', 'venture capital', 'tariffs', 'cryptocurrency', 'bitcoin', 'etf',
-                    'gdp growth', 'recession', 'commodities', 'crude oil', 'corporate buyout'
+                    'gdp growth', 'recession', 'commodities', 'crude oil', 'corporate buyout',
+                    'growth forecast', 'energy prices', 'budget deficit', 'trade deficit', 'retail sales', 'imf', 'world bank'
                 ],
                 'negative_patterns': []
             },
@@ -75,7 +76,7 @@ class CategoryService:
                     'software update', 'cloud computing', 'quantum computing', 'supercomputer',
                     'smartphone', 'iphone', 'android os', 'apple inc', 'google cloud',
                     'microsoft azure', 'metaverse', 'open source software', 'programming language',
-                    'developer api', 'robotics automation', 'autonomous vehicles'
+                    'developer api', 'robotics automation', 'autonomous vehicles', 'cyberattack', 'hackers', 'ai startup', 'data breach', 'gpu'
                 ],
                 'negative_patterns': [
                     r'\b(?:apple\s+pie|apple\s+orchard|fruit|harvest)\b'
@@ -84,13 +85,15 @@ class CategoryService:
             'Science & Health': {
                 'priority': 4,
                 'keywords': [
-                    'scientific study', 'clinical trial', 'medical research', 'researchers find',
-                    'laboratory', 'peer reviewed', 'cancer treatment', 'vaccine trial',
+                    'scientific study', 'clinical trial', 'clinical trials', 'medical research', 'researchers find',
+                    'laboratory', 'peer reviewed', 'cancer treatment', 'vaccine trial', 'vaccine', 'vaccines',
+                    'vaccination', 'unvaccinated', 'measles', 'outbreak', 'epidemic', 'pandemic', 'disease',
                     'infectious disease', 'pathogen', 'fda approval', 'genome', 'dna sequencing',
                     'nasa', 'space telescope', 'james webb', 'mars rover', 'astronomy',
                     'supernova', 'solar eclipse', 'climate change', 'global warming',
                     'carbon emissions', 'renewable energy', 'biodiversity', 'ecosystem',
-                    'species discovered', 'neuroscience', 'mental health'
+                    'species discovered', 'neuroscience', 'mental health', 'hospital', 'public health',
+                    'cdc', 'who', 'medical study', 'virus', 'infection', 'space flight', 'astronaut', 'spacex', 'orbit', 'mars', 'biotech'
                 ],
                 'negative_patterns': []
             },
@@ -144,7 +147,8 @@ class CategoryService:
         hours_old = 999.0
         published_dt = article.get('published_dt')
         if published_dt and isinstance(published_dt, datetime):
-            hours_old = (datetime.now() - published_dt).total_seconds() / 3600.0
+            utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+            hours_old = max(0.0, (utc_now - published_dt).total_seconds() / 3600.0)
 
         title_clean = self._clean_text(title)
         body_clean = self._clean_text(f"{title} {desc}")
@@ -164,17 +168,8 @@ class CategoryService:
                 if re.search(pat, title_clean):
                     return 'Breaking News'
 
-        # 2. CHECK EXPLICIT SOURCE CATEGORY HINTS (Highest reliability when from specialized feeds)
-        if source_name == 'TechCrunch':
-            return 'Technology'
-        elif source_name == 'CNBC' and not any(k in body_clean for k in ['premier league', 'nba', 'oscar']):
-            return 'Business'
-        elif source_name == 'Ars Technica' and any(k in body_clean for k in ['nasa', 'space', 'science', 'research', 'biology']):
-            return 'Science & Health'
-        elif source_name == 'Ars Technica':
-            return 'Technology'
-
-        # 3. SCORE OTHER CATEGORIES WITH CONTEXTUAL PHRASE MATCHING
+        # 2. SCORE CATEGORIES WITH CONTEXTUAL PHRASE MATCHING FIRST
+        # Real topic keywords always supersede publisher default niches (e.g., Ars Technica measles -> Science & Health)
         scores: Dict[str, int] = {}
         
         for category, rules in self.category_rules.items():
@@ -207,6 +202,14 @@ class CategoryService:
             # If the score is meaningful (at least 2), adopt it
             if scores[best_cat] >= 2:
                 return best_cat
+
+        # 3. CHECK EXPLICIT SOURCE CATEGORY HINTS (When content score is ambiguous or generic)
+        if source_name == 'TechCrunch':
+            return 'Technology'
+        elif source_name == 'Ars Technica':
+            return 'Technology'
+        elif source_name == 'CNBC' and not any(k in body_clean for k in ['premier league', 'nba', 'oscar']):
+            return 'Business'
 
         # 4. FALLBACK TO RSS FEED METADATA CATEGORY IF VALID
         for cat_name in ['Technology', 'Business', 'World', 'Science & Health', 'Politics', 'Sports & Culture']:

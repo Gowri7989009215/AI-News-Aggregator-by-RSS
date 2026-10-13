@@ -7,7 +7,7 @@ and deduplication for reliable RSS news sources.
 import re
 import html
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
 import requests
@@ -192,7 +192,7 @@ class RSSService:
         return None
 
     def _clean_text(self, text: str) -> str:
-        """Remove HTML tags, decode entities, and strip whitespace"""
+        """Remove HTML tags, decode entities, repair unicode replacements, and strip whitespace"""
         if not text:
             return ""
         if '<' in text and '>' in text:
@@ -203,6 +203,22 @@ class RSSService:
         else:
             clean = text.strip()
         clean = html.unescape(clean)
+        # Repair corrupted unicode replacement character in contractions and punctuation
+        u = '\uFFFD'
+        # Temperature / degree: 122°F
+        clean = re.sub(r'(\d+)' + u + r'([FCfc])', r'\1°\2', clean)
+        # Contractions: word's
+        clean = re.sub(r'([a-zA-Z])' + u + r'([a-zA-Z])', r"\1'\2", clean)
+        # Plural possessive: doctors'
+        clean = re.sub(r'([sS])' + u + r'(\s+)', r"\1'\2", clean)
+        # Separator with space: coast — Europe
+        clean = re.sub(r'\s+' + u + r'\s*', r' — ', clean)
+        clean = re.sub(r'\s*' + u + r'\s+', r' — ', clean)
+        # Opening quotes: "word
+        clean = re.sub(r'(^|\s)' + u + r'([a-zA-Z0-9])', r'\1"\2', clean)
+        # Closing quotes: word"
+        clean = re.sub(r'([a-zA-Z0-9])' + u, r'\1"', clean)
+        clean = clean.replace(u, "'")
         clean = re.sub(r'\s+', ' ', clean).strip()
         return clean
 
@@ -228,13 +244,14 @@ class RSSService:
                 logger.warning(f"Feed parser warning for {source_name}: {feed.bozo_exception}")
 
             articles = []
-            fetch_time = datetime.now()
+            fetch_time_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            fetch_time_local = datetime.now()
             
             for entry in feed.entries[:25]:
                 if not hasattr(entry, 'title') or not hasattr(entry, 'link'):
                     continue
                 
-                title = entry.get('title', '').strip()
+                title = self._clean_text(entry.get('title', ''))
                 link = entry.get('link', '').strip()
                 
                 # 1. LINK VALIDATION & CANONICAL NORMALIZATION
@@ -243,14 +260,16 @@ class RSSService:
                     logger.debug(f"Skipping invalid article link {link}: {err}")
                     continue
 
-                # 2. DATE INTEGRITY (True published date vs fetched date)
+                # 2. DATE INTEGRITY (True published date in UTC vs fetched date)
                 published_dt, rel_time, is_verified_date = self.validation_service.parse_publication_date(entry)
                 is_outdated, outdated_label = self.validation_service.check_staleness(published_dt)
                 
-                # Recently published: published within last 3 hours
+                # Recently published: published within last 3 hours (UTC comparison, never negative)
                 is_recently_published = False
-                if published_dt and (fetch_time - published_dt) < timedelta(hours=3):
-                    is_recently_published = True
+                if published_dt:
+                    age = fetch_time_utc - published_dt
+                    if timedelta(seconds=0) <= age <= timedelta(hours=3):
+                        is_recently_published = True
 
                 # 3. TEXT SANITIZATION
                 desc = self._clean_text(entry.get('description', '') or entry.get('summary', ''))
@@ -285,7 +304,7 @@ class RSSService:
                     'published_relative': rel_time,
                     'published_iso': published_dt.isoformat() if published_dt else None,
                     'is_verified_date': is_verified_date,
-                    'fetched_dt': fetch_time,
+                    'fetched_dt': fetch_time_local,
                     'fetched_relative': "Just now",
                     'is_recently_published': is_recently_published,
                     'is_outdated': is_outdated,
@@ -311,7 +330,7 @@ class RSSService:
             # Cache results
             self.cache[cache_key] = {
                 'articles': articles,
-                'timestamp': fetch_time,
+                'timestamp': fetch_time_local,
                 'status': 'Healthy'
             }
             
@@ -324,6 +343,15 @@ class RSSService:
             
         except requests.RequestException as e:
             logger.error(f"Failed to fetch {source_name}: {str(e)}")
+            # Stale-while-revalidate: if a previous healthy cache exists, return it as fallback
+            if cache_key in self.cache and self.cache[cache_key].get('articles'):
+                logger.info(f"Using stale cached fallback for {source_name} due to network error")
+                return {
+                    'source': source_name,
+                    'articles': self.cache[cache_key]['articles'],
+                    'cached': True,
+                    'status': f'Recovered from cache (Network: {str(e)})'
+                }
             return {
                 'source': source_name,
                 'articles': [],
@@ -333,6 +361,13 @@ class RSSService:
             }
         except Exception as e:
             logger.error(f"Error parsing {source_name}: {str(e)}")
+            if cache_key in self.cache and self.cache[cache_key].get('articles'):
+                return {
+                    'source': source_name,
+                    'articles': self.cache[cache_key]['articles'],
+                    'cached': True,
+                    'status': f'Recovered from cache (Parse Error: {str(e)})'
+                }
             return {
                 'source': source_name,
                 'articles': [],

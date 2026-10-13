@@ -197,16 +197,18 @@ class ValidationService:
         if dt is None:
             return None, "Publication date unverified", False
 
-        # Format relative string based on true publication date
-        now = datetime.now()
-        diff = now - dt
+        # Compute difference against CURRENT UTC TIME (not machine local time!)
+        utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+        diff = utc_now - dt
         total_seconds = int(diff.total_seconds())
 
-        if total_seconds < 0:
-            # Clock skew: future date by a few minutes
-            rel_str = "Just now"
+        # Guard against clock skew and future-dated posts:
+        if total_seconds < -300:
+            # More than 5 minutes in future: timezone discrepancy or publisher future schedule
+            rel_str = dt.strftime("%b %d, %Y")
         elif total_seconds < 60:
-            rel_str = f"{total_seconds}s ago"
+            # Published between -300s (minor skew) and +60s
+            rel_str = "Just now"
         elif total_seconds < 3600:
             minutes = total_seconds // 60
             rel_str = f"{minutes}m ago"
@@ -229,7 +231,8 @@ class ValidationService:
         if not published_dt:
             return False, None
 
-        age = datetime.now() - published_dt
+        utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
+        age = utc_now - published_dt
         if age > timedelta(days=7):
             return True, f"Archived ({age.days}d old)"
         elif age > timedelta(hours=48):
